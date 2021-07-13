@@ -27,6 +27,10 @@ landgrab score is the sum of all of the scores of each portal.
 You need a userscript manager to use IITC, install the landgrab plugin in the
 same way.
 
+Scores are shown in the portal detail view.
+
+UI improvements are very much on my to-do list...
+
 ## This is flakey as heck, what's the deal?
 - I don't know javascript. I r clueless noob.
 - There is a bug related to caching in the standard Ingress Intel map that
