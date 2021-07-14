@@ -29,7 +29,10 @@ same way.
 
 Scores are shown in the portal detail view.
 
-UI improvements are very much on my to-do list...
+"Bubbles" will be displayed on the map showing areas where you have captured
+all the portals. In addition, if you select a portal that you have captured,
+it will show a bubble indicating all the nearby portals that count towards
+the selected portal's score.
 
 ## This is flakey as heck, what's the deal?
 - I don't know javascript. I r clueless noob.
@@ -44,7 +47,8 @@ UI improvements are very much on my to-do list...
   reloading the page. I r javascript noob, soz.
 - It's slow. I don't know how much of this is Intel, how much is IITC and how
   much is Landgrab. Um. Did I mention I'm a javascript noob? I did use a
-  quadtree for O(n log(n)) performance instead of the naive O(n^2) algorithm. Do  I get points for that? I'm sorry.
+  quadtree for O(n log(n)) performance instead of the naive O(n^2) algorithm.
+  Do I get points for that? I'm sorry.
 
 # Credits
 IITC was originally written by Stefan Breunig and IITC "Community Edition"
