@@ -40,7 +40,7 @@ function wrapper(plugin_info) {
     landgrab.bubbles = new L.LayerGroup();
     landgrab.bubbleOptions = {
         stroke: true,
-        color: '#ADD8E6',
+        color: '#8E4C82',
         weight: 4,
         opacity: 0.5,
         interactive: false,
@@ -50,6 +50,11 @@ function wrapper(plugin_info) {
         dashArray: ''
     };
 
+    landgrab.selectedBubble = L.geodesicCircle([0, 0], 0, {
+        ...landgrab.bubbleOptions,
+        color: '#ADD8E6'
+    });
+
     landgrab.disabledMessage = null;
     landgrab.contentHTML = null;
 
@@ -58,12 +63,8 @@ function wrapper(plugin_info) {
     landgrab.onPortalSelected = function() {
         var guid = window.selectedPortal;
         var portalInfo = landgrab.portalInfo[guid];
-        if (portalInfo.captured) {
-            landgrab.updatePortalScore(guid);
-            var circle = L.geodesicCircle([portalInfo.lat/1000000, portalInfo.lng/1000000], portalInfo.captureRadius, landgrab.bubbleOptions);
-            landgrab.bubbles.clearLayers();
-            landgrab.bubbles.addLayer(circle);
-        }
+        landgrab.selectedBubble.setLatLng([portalInfo.lat/1000000, portalInfo.lng/1000000]);
+        landgrab.selectedBubble.setRadius(portalInfo.captureRadius);
     }
 
     landgrab.onPortalDetailsUpdated = function() {
@@ -122,6 +123,35 @@ function wrapper(plugin_info) {
         }
     }
 
+    landgrab.portalBubble = function (guid, style) {
+        var portalInfo = landgrab.portalInfo[guid];
+        return L.geodesicCircle([portalInfo.lat/1000000, portalInfo.lng/1000000], portalInfo.captureRadius, style);
+    }
+
+    landgrab.drawBubbles = function() {
+        var portalList = Object.fromEntries(
+            // Don't try to draw bubbles for portals with score less than 5
+            Object.entries(landgrab.portalInfo).filter(
+                (entry) => entry[1].score >= 5
+            )
+        );
+        landgrab.bubbles.clearLayers();
+        // re-add the bubble for the selected portal
+        landgrab.bubbles.addLayer(landgrab.selectedBubble);
+        while (!$.isEmptyObject(portalList)) {
+            let [best_guid, bestPortalInfo] = Object.entries(portalList).reduce((a, b) => a[1].score > b[1].score ? a : b);
+            let bubble = L.geodesicCircle(
+                [bestPortalInfo.lat/1000000, bestPortalInfo.lng/1000000],
+                bestPortalInfo.captureRadius,
+                landgrab.bubbleOptions
+            );
+            landgrab.bubbles.addLayer(bubble);
+            for (let guid of landgrab.findOverlappingBubbles(best_guid)) {
+                delete portalList[guid];
+            }
+        }
+    }
+
     landgrab.onMapDataRefreshEnd = function () {
         var guid;
         while (guid = landgrab.updateQueue.pop()) {
@@ -133,6 +163,7 @@ function wrapper(plugin_info) {
         }
         landgrab.storeLocal('portalInfo');
         landgrab.storeLocal('quadtree');
+        landgrab.drawBubbles();
     }
 
     landgrab.setPortalCaptured = function(guid) {
@@ -279,6 +310,22 @@ function wrapper(plugin_info) {
         [cur_best, cur_dst] = landgrab.findNearestInner(tree[2], lat, lng, quad_lat | bitmask, quad_lng, height, cur_best, cur_dst, pred, trace);
         [cur_best, cur_dst] = landgrab.findNearestInner(tree[3], lat, lng, quad_lat | bitmask, quad_lng | bitmask, height, cur_best, cur_dst, pred, trace);
         return [cur_best, cur_dst];
+    }
+
+    landgrab.findOverlappingBubbles = function(guid) {
+        var portalInfo = landgrab.portalInfo[guid];
+        let overlap = function (innerguid) {
+            let innerPortalInfo = landgrab.portalInfo[innerguid];
+            let dist = landgrab.distPointPoint(innerPortalInfo.lat, innerPortalInfo.lng, overlap.target.lat, overlap.target.lng);
+            if (dist < innerPortalInfo.captureRadius + overlap.target.captureRadius) {
+                overlap.results.push(innerguid);
+            }
+            return false;
+        }
+        overlap.target = portalInfo;
+        overlap.results = [];
+        landgrab.findNearest(portalInfo.lat, portalInfo.lng, overlap, portalInfo.captureRadius * 2);
+        return overlap.results;
     }
 
     landgrab.updatePortalScore = function(guid) {
