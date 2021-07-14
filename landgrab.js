@@ -37,10 +37,34 @@ function wrapper(plugin_info) {
     landgrab.updateQueue = [];
     landgrab.score = 0;
 
+    landgrab.bubbles = new L.LayerGroup();
+    landgrab.bubbleOptions = {
+        stroke: true,
+        color: '#ADD8E6',
+        weight: 4,
+        opacity: 0.5,
+        interactive: false,
+        fill: true,
+        fillColor: null, // to use the same as 'color' for fill
+        fillOpacity: 0.2,
+        dashArray: ''
+    };
+
     landgrab.disabledMessage = null;
     landgrab.contentHTML = null;
 
     landgrab.isHighlightActive = false;
+
+    landgrab.onPortalSelected = function() {
+        var guid = window.selectedPortal;
+        var portalInfo = landgrab.portalInfo[guid];
+        if (portalInfo.captured) {
+            landgrab.updatePortalScore(guid);
+            var circle = L.geodesicCircle([portalInfo.lat/1000000, portalInfo.lng/1000000], portalInfo.captureRadius, landgrab.bubbleOptions);
+            landgrab.bubbles.clearLayers();
+            landgrab.bubbles.addLayer(circle);
+        }
+    }
 
     landgrab.onPortalDetailsUpdated = function() {
         if(typeof(Storage) === "undefined") {
@@ -57,10 +81,11 @@ function wrapper(plugin_info) {
                     landgrab.setPortalCaptured(guid);
                 }
             }
-            details.score = landgrab.portalScore(guid);
+            let portalInfo = landgrab.portalInfo[guid];
             $('#portaldetails > .imgpreview').after(
-                '<div id="landgrab-container">Portal Score: ' + details.score + '</br>' +
+                '<div id="landgrab-container">Portal Score: ' + portalInfo.score + '</br>' +
                 'Total Score: ' + landgrab.score + '</div>');
+
         }
     }
 
@@ -79,6 +104,7 @@ function wrapper(plugin_info) {
                 portalInfo = landgrab.portalInfo[guid] = {
                     captured: history.captured,
                     score: 0,
+                    captureRadius: 0,
                     lat: portal.options.data.latE6,
                     lng: portal.options.data.lngE6,
                 };
@@ -99,7 +125,7 @@ function wrapper(plugin_info) {
     landgrab.onMapDataRefreshEnd = function () {
         var guid;
         while (guid = landgrab.updateQueue.pop()) {
-            landgrab.portalScore(guid);
+            landgrab.updatePortalScore(guid);
         }
         landgrab.score = 0;
         for (let guid in landgrab.portalInfo) {
@@ -149,14 +175,15 @@ function wrapper(plugin_info) {
         // spherical distance formula
         // stolen from https://www.movable-type.co.uk/scripts/latlong.html
         // conversion from micro-degrees to radians
-        const factor = Math.PI/180000000
+        const factor = Math.PI/180000000;
+        const earth_diameter = 12742000;
         let φ1 = lat * factor;
         let φ2 = lat * factor;
         let Δφ = (lat-other_lat) * factor;
         let Δλ = (lng-other_lng) * factor;
 
         let a = Math.sin(Δφ/2) * Math.sin(Δφ/2) + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ/2) * Math.sin(Δλ/2);
-        return 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        return earth_diameter * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
     }
 
     landgrab.distPointQuad = function(lat, lng, quad_lat, quad_lng, height) {
@@ -254,7 +281,7 @@ function wrapper(plugin_info) {
         return [cur_best, cur_dst];
     }
 
-    landgrab.portalScore = function(guid) {
+    landgrab.updatePortalScore = function(guid) {
         var portalInfo = landgrab.portalInfo[guid];
         if (!portalInfo) {
             console.log("guid not found", guid);
@@ -262,6 +289,7 @@ function wrapper(plugin_info) {
         }
         if (!portalInfo.captured) return 0;
         var [nearest_uncaptured, dist] = landgrab.findNearestUncaptured(portalInfo.lat, portalInfo.lng);
+        portalInfo.captureRadius = dist;
         let score = function (guid) {
             score.count = score.count + 1;
             return false;
@@ -269,7 +297,6 @@ function wrapper(plugin_info) {
         score.count = 0;
         landgrab.findNearest(portalInfo.lat, portalInfo.lng, score, dist);
         portalInfo.score = score.count;
-        return score.count;
     }
 
     landgrab.findNearestUncaptured = function(lat, lng) {
@@ -408,8 +435,10 @@ function wrapper(plugin_info) {
         landgrab.loadLocal('quadtree');
         window.addPortalHighlighter('landgrab', landgrab.highlighter);
         window.addHook('portalDetailsUpdated', landgrab.onPortalDetailsUpdated);
+        window.addHook('portalSelected', landgrab.onPortalSelected);
         window.addHook('portalAdded', landgrab.onPortalAdded);
         window.addHook('mapDataRefreshEnd', landgrab.onMapDataRefreshEnd);
+        window.addLayerGroup('Landgrab: Grabbed land', landgrab.bubbles, true);
     }
 
     setup.info = plugin_info; //add the script info data to the function as a property
@@ -424,3 +453,4 @@ var info = {};
 if (typeof GM_info !== 'undefined' && GM_info && GM_info.script) info.script = { version: GM_info.script.version, name: GM_info.script.name, description: GM_info.script.description };
 script.appendChild(document.createTextNode('('+ wrapper +')('+JSON.stringify(info)+');'));
 (document.body || document.head || document.documentElement).appendChild(script);
+
