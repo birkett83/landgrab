@@ -1,9 +1,9 @@
 // ==UserScript==
 // @author         birkett83
-// @name           IITC plugin: landgrab
+// @name           IITC plugin: Landgrab
 // @category       Misc
 // @version        0.1
-// @description    landgrab
+// @description    Landgrab
 // @id             landgrab
 // @namespace      https://github.com/IITC-CE/ingress-intel-total-conversion
 // @match          https://intel.ingress.com/*
@@ -29,7 +29,6 @@ function wrapper(plugin_info) {
     // maps the JS property names to localStorage keys
     landgrab.FIELDS = {
         'portalInfo': 'plugin-landgrab-portalinfo',
-        'quadtree': 'plugins-landgrab-quadtree',
     };
 
     landgrab.portalInfo = {};
@@ -116,7 +115,7 @@ function wrapper(plugin_info) {
             // add the portal to the queue for rescoring.
             // no point rescoring now because more portals will likely be added nearby
             landgrab.updateQueue.push(guid);
-            landgrab.addPortalToQuadTree(portal);
+            landgrab.addPortalToQuadTree(guid, portal.options.data.latE6, portal.options.data.lngE6);
 
         } else {
             //console.log("History not found; Not adding", guid)
@@ -179,9 +178,9 @@ function wrapper(plugin_info) {
         landgrab.storeLocal('portalInfo');
     }
 
-    landgrab.addPortalToQuadTree = function(portal) {
-        var lat = portal.options.data.latE6 + OFFSET;
-        var lng = portal.options.data.lngE6 + OFFSET;
+    landgrab.addPortalToQuadTree = function(guid, lat, lng) {
+        lat += OFFSET;
+        lng += OFFSET;
 
         var tree = landgrab.quadtree;
 
@@ -196,7 +195,7 @@ function wrapper(plugin_info) {
             tree = tree[quadrant];
         }
         let quadrant = ((lat & 1) << 1 ) | (lng & 1);
-        tree[quadrant] = portal.options.guid;
+        tree[quadrant] = guid;
     }
 
     landgrab.distPointPoint = function(lat, lng, other_lat, other_lng) {
@@ -479,7 +478,10 @@ function wrapper(plugin_info) {
         landgrab.setupCSS();
         landgrab.setupContent();
         landgrab.loadLocal('portalInfo');
-        landgrab.loadLocal('quadtree');
+        for (let guid in landgrab.portalInfo) {
+            let portalInfo = landgrab.portalInfo[guid];
+            landgrab.addPortalToQuadTree(guid, portalInfo.lat, portalInfo.lng);
+        }
         window.addPortalHighlighter('landgrab', landgrab.highlighter);
         window.addHook('portalDetailsUpdated', landgrab.onPortalDetailsUpdated);
         window.addHook('portalSelected', landgrab.onPortalSelected);
