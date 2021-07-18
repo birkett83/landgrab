@@ -36,7 +36,6 @@ function wrapper(plugin_info) {
     landgrab.updateQueue = [];
     landgrab.score = 0;
 
-    landgrab.bubbles = new L.LayerGroup();
     landgrab.bubbleOptions = {
         stroke: true,
         color: '#8E4C82',
@@ -48,11 +47,6 @@ function wrapper(plugin_info) {
         fillOpacity: 0.2,
         dashArray: ''
     };
-
-    landgrab.selectedBubble = L.geodesicCircle([0, 0], 0, {
-        ...landgrab.bubbleOptions,
-        color: '#ADD8E6'
-    });
 
     landgrab.disabledMessage = null;
     landgrab.contentHTML = null;
@@ -482,6 +476,11 @@ function wrapper(plugin_info) {
             let portalInfo = landgrab.portalInfo[guid];
             landgrab.addPortalToQuadTree(guid, portalInfo.lat, portalInfo.lng);
         }
+        landgrab.bubbles = new L.LayerGroup();
+        landgrab.selectedBubble = L.geodesicCircle([0, 0], 0, {
+            ...landgrab.bubbleOptions,
+            color: '#ADD8E6'
+        });
         window.addPortalHighlighter('landgrab', landgrab.highlighter);
         window.addHook('portalDetailsUpdated', landgrab.onPortalDetailsUpdated);
         window.addHook('portalSelected', landgrab.onPortalSelected);
