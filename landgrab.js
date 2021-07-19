@@ -85,7 +85,6 @@ function wrapper(plugin_info) {
 
     landgrab.onPortalAdded = function (data) {
         let guid = data.portal.options.guid;
-        //landgrab.updateQueue.push(guid);
         let portal = data.portal;
         let history = portal.options.data.history;
         // Bug in stock ingress means history often doesn't show. Something about caching.
@@ -94,7 +93,6 @@ function wrapper(plugin_info) {
         if (history) {
             let portalInfo = landgrab.portalInfo[guid];
             if (!portalInfo) {
-                //console.log("Adding", guid);
                 portalInfo = landgrab.portalInfo[guid] = {
                     captured: history.captured,
                     score: 0,
@@ -103,7 +101,6 @@ function wrapper(plugin_info) {
                     lng: portal.options.data.lngE6,
                 };
             } else {
-                //console.log("Updating history on", guid);
                 portalInfo.captured = history.captured;
             }
             // add the portal to the queue for rescoring.
@@ -111,8 +108,6 @@ function wrapper(plugin_info) {
             landgrab.updateQueue.push(guid);
             landgrab.addPortalToQuadTree(guid, portal.options.data.latE6, portal.options.data.lngE6);
 
-        } else {
-            //console.log("History not found; Not adding", guid)
         }
     }
 
@@ -155,7 +150,6 @@ function wrapper(plugin_info) {
             landgrab.score += landgrab.portalInfo[guid].score;
         }
         landgrab.storeLocal('portalInfo');
-        landgrab.storeLocal('quadtree');
         landgrab.drawBubbles();
     }
 
@@ -266,14 +260,12 @@ function wrapper(plugin_info) {
             return [cur_best, cur_dst];
         }
         if (height == 0) {
-            // console.log(tree);
             // tree is a leaf node, i.e a portal guid
             let portalInfo = landgrab.portalInfo[tree];
             let new_dst = landgrab.distPointPoint(lat, lng, portalInfo.lat, portalInfo.lng);
             if (new_dst < cur_dst) {
                 if (trace) console.log("calling pred");
                 if (pred(tree)) {
-                    //console.log(tree);
                     return [tree, new_dst];
                 } else {
                     return [cur_best, cur_dst];
@@ -345,42 +337,6 @@ function wrapper(plugin_info) {
         }
         return landgrab.findNearest(lat, lng, uncaptured);
     }
-
-    /*landgrab.findExact = function (lat, lng) {
-        var tree = landgrab.quadtree;
-        for (let height = MAX_HEIGHT; height > 0; height--) {
-            let quadrant = (((lat >> height) & 1) << 1)| ((lng >> height) & 1);
-
-            if (tree[quadrant].length == 0) {
-                console.log(height, quadrant, tree);
-            }
-            tree = tree[quadrant];
-        }
-        let quadrant = ((lat & 1) << 1 ) | (lng & 1);
-        return tree[quadrant];
-    }*/
-
-    /*landgrab.commonPrefixDist = function(lat, lng) {
-        // Finds the quadrant in the tree with the longest common prefix of lat, lng.
-        // This gives us an upper bound for the distance to the nearest point.
-        var tree = landgrab.quadtree;
-        for (let height = 31; height >= 0; height--) {
-            if (tree.length > 0) {
-                let quadrant = (((lat >> (height-1)) & 2) | ((lng >> height) & 1));
-                //console.log(tree, height);
-                tree = tree[quadrant];
-            } else {
-                // This quad is not in the quadtree. so parent is, which means the target
-                // point is in a quad of height height+1 that contains at least one portal
-                // The target point is at most sqrt(2)*(1<<(height+1)) from that portal.
-                // But... we're using squared distances because taking square roots is for
-                // suckers.
-
-                return Math.pow(2, 2*height+3);
-            }
-        }
-        return 0;
-    }*/
 
     landgrab.storeLocal = function(name) {
         var key = landgrab.FIELDS[name];
