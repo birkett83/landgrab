@@ -41,10 +41,9 @@ the selected portal's score.
   page, the history for the portals in view on the map should load correctly.
   Landgrab will store history in your browser once it has seen it, so you should
   only need to do this once for each area.
-- Scores are currently only computed whenever new portal data loads. This
-  happens either if you refresh the page or if you scroll to a new area. If you
-  have just captured a portal and want the score to update immediately, try
-  reloading the page. I r javascript noob, soz.
+- Scores are only computed for portals that are loaded in view. If you have a
+  large bubble you may need to scroll around the map to update scores for nearby
+  portals.
 - It's slow. I don't know how much of this is Intel, how much is IITC and how
   much is Landgrab. Um. Did I mention I'm a javascript noob? I did use a
   quadtree for O(n log(n)) performance instead of the naive O(n^2) algorithm.
