@@ -33,7 +33,6 @@ function wrapper(plugin_info) {
 
     landgrab.portalInfo = {};
     landgrab.quadtree = [];
-    landgrab.updateQueue = [];
     landgrab.score = 0;
 
     landgrab.bubbleOptions = {
@@ -70,12 +69,14 @@ function wrapper(plugin_info) {
             details = portalDetail.get(guid),
             nickname = window.PLAYER.nickname;
         if(details) {
+            let portalInfo = landgrab.portalInfo[guid];
             if(details.history) {
-                if(details.history.captured) {
-                    landgrab.setPortalCaptured(guid);
+                if(details.history.captured && ~portalInfo.captured) {
+                    portalInfo.captured = true;
+                    landgrab.updateVisiblePortalScores();
                 }
             }
-            let portalInfo = landgrab.portalInfo[guid];
+
             $('#portaldetails > .imgpreview').after(
                 '<div id="landgrab-container">Portal Score: ' + portalInfo.score + '</br>' +
                 'Total Score: ' + landgrab.score + '</div>');
@@ -103,9 +104,6 @@ function wrapper(plugin_info) {
             } else {
                 portalInfo.captured = history.captured;
             }
-            // add the portal to the queue for rescoring.
-            // no point rescoring now because more portals will likely be added nearby
-            landgrab.updateQueue.push(guid);
             landgrab.addPortalToQuadTree(guid, portal.options.data.latE6, portal.options.data.lngE6);
 
         }
@@ -138,32 +136,6 @@ function wrapper(plugin_info) {
                 delete portalList[guid];
             }
         }
-    }
-
-    landgrab.onMapDataRefreshEnd = function () {
-        var guid;
-        while (guid = landgrab.updateQueue.pop()) {
-            landgrab.updatePortalScore(guid);
-        }
-        landgrab.score = 0;
-        for (let guid in landgrab.portalInfo) {
-            landgrab.score += landgrab.portalInfo[guid].score;
-        }
-        landgrab.storeLocal('portalInfo');
-        landgrab.drawBubbles();
-    }
-
-    landgrab.setPortalCaptured = function(guid) {
-        var portalInfo = landgrab.portalInfo[guid];
-
-        if(portalInfo === undefined) {
-            return;
-        }
-
-        if(portalInfo.captured) return;
-
-        portalInfo.captured = true;
-        landgrab.storeLocal('portalInfo');
     }
 
     landgrab.addPortalToQuadTree = function(guid, lat, lng) {
@@ -316,8 +288,7 @@ function wrapper(plugin_info) {
     landgrab.updatePortalScore = function(guid) {
         var portalInfo = landgrab.portalInfo[guid];
         if (!portalInfo) {
-            console.log("guid not found", guid);
-            return 0;
+            return;
         }
         if (!portalInfo.captured) return 0;
         var [nearest_uncaptured, dist] = landgrab.findNearestUncaptured(portalInfo.lat, portalInfo.lng);
@@ -329,6 +300,19 @@ function wrapper(plugin_info) {
         score.count = 0;
         landgrab.findNearest(portalInfo.lat, portalInfo.lng, score, dist);
         portalInfo.score = score.count;
+    }
+
+    landgrab.updateVisiblePortalScores = function () {
+        // Update portal score for all portals in view
+        for (let guid in window.portals) {
+            landgrab.updatePortalScore(guid);
+        }
+        landgrab.score = 0;
+        for (let guid in landgrab.portalInfo) {
+            landgrab.score += landgrab.portalInfo[guid].score;
+        }
+        landgrab.storeLocal('portalInfo');
+        landgrab.drawBubbles();
     }
 
     landgrab.findNearestUncaptured = function(lat, lng) {
@@ -369,15 +353,6 @@ function wrapper(plugin_info) {
             var history = data.portal.options.data.history;
 
             var portalInfo = landgrab.portalInfo[guid];
-
-            // doing this here feels kinda gross. I can't find a better alternative right now.
-
-            if (history && portalInfo) {
-                if (history.captured) {
-                    landgrab.setPortalCaptured(guid);
-                }
-            }
-
             var style = {};
 
             if (portalInfo) {
@@ -441,7 +416,7 @@ function wrapper(plugin_info) {
         window.addHook('portalDetailsUpdated', landgrab.onPortalDetailsUpdated);
         window.addHook('portalSelected', landgrab.onPortalSelected);
         window.addHook('portalAdded', landgrab.onPortalAdded);
-        window.addHook('mapDataRefreshEnd', landgrab.onMapDataRefreshEnd);
+        window.addHook('mapDataRefreshEnd', landgrab.updateVisiblePortalScores);
         window.addLayerGroup('Landgrab: Grabbed land', landgrab.bubbles, true);
     }
 
