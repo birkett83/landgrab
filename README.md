@@ -25,11 +25,11 @@ you have captured gets a score equal to the smallest number of regions you have
 to cross to reach a portal that you *haven't* captured. Each regions is
 coloured according to your score for that region.
 
-## How do I play it?
-You need a userscript manager to use IITC, install the landgrab plugin in the
-same way.
-
 Scores are shown in the portal detail view.
+## How do I play it?
+You need a userscript manager to use IITC. Go to the
+[Releases](https://github.com/birkett83/landgrab/releases/) page and click on
+landgrab.user.js to install the plugin.
 
 ## This is flakey as heck, what's the deal?
 - I don't know javascript. I r clueless noob.
