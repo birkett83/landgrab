@@ -2,42 +2,40 @@
 // @author         birkett83
 // @name           IITC plugin: Landgrab
 // @category       Misc
-// @version        0.1
+// @version        0.2
 // @description    Landgrab
 // @id             landgrab
 // @namespace      https://github.com/IITC-CE/ingress-intel-total-conversion
 // @match          https://intel.ingress.com/*
 // @grant          none
+
+// @require        https://cdn.jsdelivr.net/npm/d3@7.0.0/dist/d3.min.js
+
 // ==/UserScript==
 
+/* globals $, L, d3 */
+
+
 function wrapper(plugin_info) {
-
-    // Ingress gives coords stored as (lat, lng) in micro-degrees.
-    // Most significant bit of 360,000,000 is 1<<28
-    // So we need 28 bits and our max tree height is 28.
-    const MAX_HEIGHT = 28;
-    // Using negative numbers in the quad tree was giving me a headache.
-    // So we'll add 180° before storing / looking up in quad tree.
-    const OFFSET = 180*1000*1000;
-
     // ensure plugin framework is there, even if iitc is not yet loaded
     if(typeof window.plugin !== 'function') window.plugin = function() {};
 
     //use own namespace for plugin
     var landgrab = window.plugin.landgrab = function() {};
 
-    // maps the JS property names to localStorage keys
-    landgrab.FIELDS = {
-        'portalInfo': 'plugin-landgrab-portalinfo',
-    };
+    landgrab.portalInfo = [];
+    landgrab.portalIndex = {};
+    landgrab.scores = [];
+    landgrab.totalScore = 0;
+    landgrab.voronoi = null;
+    landgrab.colorGradient = ['#000000', '#b20000', '#da0000', '#e72400', '#f14c01', '#fa7400', '#fc9200', '#feb901', '#ffde04', '#ffe432', '#ffea60']
 
-    landgrab.portalInfo = {};
-    landgrab.quadtree = [];
-    landgrab.score = 0;
+    landgrab.disabledMessage = null;
+    landgrab.contentHTML = null;
 
-    landgrab.bubbleOptions = {
+    landgrab.voronoiStyle = {
         stroke: true,
-        color: '#8E4C82',
+        color: '#FF00FF',
         weight: 4,
         opacity: 0.5,
         interactive: false,
@@ -47,16 +45,8 @@ function wrapper(plugin_info) {
         dashArray: ''
     };
 
-    landgrab.disabledMessage = null;
-    landgrab.contentHTML = null;
-
-    landgrab.isHighlightActive = false;
-
     landgrab.onPortalSelected = function() {
-        var guid = window.selectedPortal;
-        var portalInfo = landgrab.portalInfo[guid];
-        landgrab.selectedBubble.setLatLng([portalInfo.lat/1000000, portalInfo.lng/1000000]);
-        landgrab.selectedBubble.setRadius(portalInfo.captureRadius);
+        // TODO
     }
 
     landgrab.onPortalDetailsUpdated = function() {
@@ -66,20 +56,26 @@ function wrapper(plugin_info) {
         }
 
         var guid = window.selectedPortal,
-            details = portalDetail.get(guid),
+            details = window.portalDetail.get(guid),
             nickname = window.PLAYER.nickname;
         if(details) {
-            let portalInfo = landgrab.portalInfo[guid];
+            let [idx, portalInfo] = landgrab.getPortal(guid);
             if(details.history) {
-                if(details.history.captured && ~portalInfo.captured) {
+                if(details.history.captured && !portalInfo.captured) {
                     portalInfo.captured = true;
-                    landgrab.updateVisiblePortalScores();
+                    landgrab.computeScores();
+                    landgrab.storePortalInfo();
                 }
             }
+            if (landgrab.scores == null) {
+                console.log("scores are null!");
+                return
+            }
+
 
             $('#portaldetails > .imgpreview').after(
-                '<div id="landgrab-container">Portal Score: ' + portalInfo.score + '</br>' +
-                'Total Score: ' + landgrab.score + '</div>');
+                '<div id="landgrab-container">Portal Score: ' + landgrab.scores[idx] + '</br>' +
+                'Total Score: ' + landgrab.totalScore + '</div>');
 
         }
     }
@@ -90,258 +86,140 @@ function wrapper(plugin_info) {
         let history = portal.options.data.history;
         // Bug in stock ingress means history often doesn't show. Something about caching.
         // Reload the page and eventually it does. Or something.
-        // For now we just won't add portals until we get the history.
-        if (history) {
-            let portalInfo = landgrab.portalInfo[guid];
-            if (!portalInfo) {
-                portalInfo = landgrab.portalInfo[guid] = {
-                    captured: history.captured,
-                    score: 0,
-                    captureRadius: 0,
-                    lat: portal.options.data.latE6,
-                    lng: portal.options.data.lngE6,
-                };
-            } else {
-                portalInfo.captured = history.captured;
-            }
-            landgrab.addPortalToQuadTree(guid, portal.options.data.latE6, portal.options.data.lngE6);
-
-        }
-    }
-
-    landgrab.portalBubble = function (guid, style) {
-        var portalInfo = landgrab.portalInfo[guid];
-        return L.geodesicCircle([portalInfo.lat/1000000, portalInfo.lng/1000000], portalInfo.captureRadius, style);
-    }
-
-    landgrab.drawBubbles = function() {
-        var portalList = Object.fromEntries(
-            // Don't try to draw bubbles for portals with score less than 5
-            Object.entries(landgrab.portalInfo).filter(
-                (entry) => entry[1].score >= 5
-            )
-        );
-        landgrab.bubbles.clearLayers();
-        // re-add the bubble for the selected portal
-        landgrab.bubbles.addLayer(landgrab.selectedBubble);
-        while (!$.isEmptyObject(portalList)) {
-            let [best_guid, bestPortalInfo] = Object.entries(portalList).reduce((a, b) => a[1].score > b[1].score ? a : b);
-            let bubble = L.geodesicCircle(
-                [bestPortalInfo.lat/1000000, bestPortalInfo.lng/1000000],
-                bestPortalInfo.captureRadius,
-                landgrab.bubbleOptions
-            );
-            landgrab.bubbles.addLayer(bubble);
-            for (let guid of landgrab.findOverlappingBubbles(best_guid)) {
-                delete portalList[guid];
+        // For now we just ignore portals that don't have history.
+        if (!history) { return }
+        let [idx, portalInfo] = landgrab.getPortal(guid);
+        if (idx == undefined) {
+            // We have not seen this portal before.
+            // This means we need to compute a new voronoi diagram (and scores)
+            // We'll do that in mapDataRefreshEnd
+            landgrab.voronoi = null;
+            //console.log(history);
+            landgrab.addPortal(guid, portal.options.data.latE6/1000000, portal.options.data.lngE6/1000000, history.captured);
+        } else {
+            if(history.captured && !portalInfo.captured) {
+                // This portal has been captured since we last saw it. We need to recompute scores.
+                // We'll do that in mapDataRefreshEnd
+                portalInfo.captured = true;
+                landgrab.scores = null;
             }
         }
     }
 
-    landgrab.addPortalToQuadTree = function(guid, lat, lng) {
-        lat += OFFSET;
-        lng += OFFSET;
+    landgrab.mapDataRefreshEnd = function () {
+        if (!landgrab.voronoi) {
+            // Using the d3-geo-voronoi package which does proper spherical geometry
+            // produced extremely bad results when portals are close together, probably
+            // because of rounding errors in the trigonometric functions blowing up.
 
-        var tree = landgrab.quadtree;
+            // Instead we will just ignore all that and pretend these are coordinates
+            // a plane. This will totally break near the anti-prime meridian.
+            // To the people of Fiji, I humbly apologise, I could not get it to work
+            // properly for you.
 
-        for (let height = MAX_HEIGHT; height > 0; height--) {
-            if (tree.length == 0) {
-                // create a new empty quadtree node
-                for (let i = 0; i < 4; i++) {
-                    tree[i] = [];
+            landgrab.voronoi = d3.Delaunay.from(
+                Object.values(landgrab.portalInfo),
+                p => p.lat,
+                p => p.lng
+            ).voronoi([-180, -180, 180, 180]);
+            // need to recompute scores.
+            landgrab.scores = null;
+        }
+        if (!landgrab.scores) {
+            landgrab.computeScores();
+        }
+        landgrab.storePortalInfo();
+    }
+
+    landgrab.computeScores = function(depth, neighbors) {
+        var polygons = [...landgrab.voronoi.cellPolygons()];
+        var newneighbors = []
+        if (depth == undefined) {
+            landgrab.voronoiLayer.clearLayers();
+            landgrab.totalScore = 0;
+            landgrab.scores = [];
+            depth = 0;
+            neighbors = [];
+            for (let [i, portalInfo] of landgrab.portalInfo.entries()) {
+                // Find the uncaptured portals, i.e. score 0
+                if (!portalInfo.captured) {
+                    neighbors.push(i)
                 }
             }
-            let quadrant = (((lat >> height) & 1) << 1)| ((lng >> height) & 1);
-            tree = tree[quadrant];
         }
-        let quadrant = ((lat & 1) << 1 ) | (lng & 1);
-        tree[quadrant] = guid;
-    }
-
-    landgrab.distPointPoint = function(lat, lng, other_lat, other_lng) {
-        if (other_lat > OFFSET || other_lng > OFFSET) {
-            console.warn(other_lng, " > ", OFFSET, "Did you get this from a quad?");
-        }
-        // spherical distance formula
-        // stolen from https://www.movable-type.co.uk/scripts/latlong.html
-        // conversion from micro-degrees to radians
-        const factor = Math.PI/180000000;
-        const earth_diameter = 12742000;
-        let φ1 = lat * factor;
-        let φ2 = lat * factor;
-        let Δφ = (lat-other_lat) * factor;
-        let Δλ = (lng-other_lng) * factor;
-
-        let a = Math.sin(Δφ/2) * Math.sin(Δφ/2) + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ/2) * Math.sin(Δλ/2);
-        return earth_diameter * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    }
-
-    landgrab.distPointQuad = function(lat, lng, quad_lat, quad_lng, height) {
-        // The quad is the square with top left corner (quad_lat, quad_lng)
-        // and side length 1<<height
-
-        // The final `height` bits of quad_lat, quad_lng should be 0.
-        // The bitmask has those bit set to 1 so the far corner of the quad is
-        // (quad_lat | bitmask, quad_lng | bitmask)
-
-        let bitmask = (1 << height) - 1;
-
-        let quad_lat_far = quad_lat | bitmask;
-        let quad_lng_far = quad_lng | bitmask;
-
-        const clamp = (num, min, max) => Math.min(Math.max(num, min), max);
-
-        var nearest_lat = clamp(lat+OFFSET, quad_lat, quad_lat_far);
-        var nearest_lng = clamp(lng+OFFSET, quad_lng, quad_lng_far);
-
-        // undo the offset used for storing points in the tree
-        var dst = landgrab.distPointPoint(lat, lng, nearest_lat - OFFSET, nearest_lng - OFFSET);
-
-        return dst;
-    }
-
-
-    landgrab.findNearest = function(lat, lng, pred, max_dst, trace) {
-
-        let tree = landgrab.quadtree;
-        if (max_dst === undefined) max_dst = Infinity;
-
-        return landgrab.findNearestInner(tree, lat, lng, 0, 0, MAX_HEIGHT+1, null, max_dst, pred, trace);
-    }
-
-    landgrab.findNearestInner = function(tree, lat, lng, quad_lat, quad_lng, height, cur_best, cur_dst, pred, trace) {
-        ////let prefix = -(1 << height);
-        let bitmask = (1 << height) - 1;
-        let prefix = ~bitmask;
-        const bin = function(num) {
-            return (num & ~(1 <<31)).toString(2).padStart(31, 0)
-        }
-        // useful for debugging
-        const target_in_quad = (lat, lng) => (((((lat + OFFSET) & prefix) ^ quad_lat) == 0) && ((((lng + OFFSET & prefix) ^ quad_lng) == 0)));
-        if ( trace ) {
-            // useful for debugging
-            console.log("Target coords:     ", bin(lat + OFFSET), bin(lng + OFFSET));
-            console.log("    Looking in quad", bin(quad_lat), bin(quad_lng), height);
-            console.log("             Prefix", bin(prefix), bin(prefix))
-        }
-        if(pred === undefined) { console.log("pred is undefined"); pred = () => true;}
-        if (!tree || tree.length == 0) {
-            if ( trace ) {
-                console.log("bailing because tree empty", tree);
+        for (let i of neighbors) {
+            // Check if we've seen this portal before
+            if (landgrab.scores[i] != undefined) { continue };
+            landgrab.scores[i] = depth;
+            if (depth > 0) {
+                // draw on map
+                let color = landgrab.colorGradient[depth % landgrab.colorGradient.length];
+                let style = {...landgrab.voronoiStyle, color: color};
+                landgrab.voronoiLayer.addLayer(
+                    new L.polygon(polygons[i], style)
+                );
             }
-            return [cur_best, cur_dst];
-        }
-        if (height == 0) {
-            // tree is a leaf node, i.e a portal guid
-            let portalInfo = landgrab.portalInfo[tree];
-            let new_dst = landgrab.distPointPoint(lat, lng, portalInfo.lat, portalInfo.lng);
-            if (new_dst < cur_dst) {
-                if (trace) console.log("calling pred");
-                if (pred(tree)) {
-                    return [tree, new_dst];
-                } else {
-                    return [cur_best, cur_dst];
+            landgrab.totalScore += depth;
+            for (let n of landgrab.voronoi.neighbors(i)) {
+                if (landgrab.scores[n] == undefined) {
+                    newneighbors.push(n)
                 }
-            } else {
-                return [cur_best, cur_dst];
             }
         }
-
-        let new_dst = landgrab.distPointQuad(lat, lng, quad_lat, quad_lng, height)
-
-        if (new_dst > cur_dst) {
-            if ( trace ) {
-                console.log("bailing because of dst", cur_dst, new_dst);
-                console.log(lat, lng, quad_lat, quad_lng, height);
-            }
-
-            return [cur_best, cur_dst];
+        if (newneighbors.length) {
+            landgrab.computeScores(depth+1, newneighbors);
         }
-
-        height = height - 1;
-
-        bitmask = 1 << height;
-
-        [cur_best, cur_dst] = landgrab.findNearestInner(tree[0], lat, lng, quad_lat, quad_lng, height, cur_best, cur_dst, pred, trace);
-        [cur_best, cur_dst] = landgrab.findNearestInner(tree[1], lat, lng, quad_lat, quad_lng | bitmask, height, cur_best, cur_dst, pred, trace);
-        [cur_best, cur_dst] = landgrab.findNearestInner(tree[2], lat, lng, quad_lat | bitmask, quad_lng, height, cur_best, cur_dst, pred, trace);
-        [cur_best, cur_dst] = landgrab.findNearestInner(tree[3], lat, lng, quad_lat | bitmask, quad_lng | bitmask, height, cur_best, cur_dst, pred, trace);
-        return [cur_best, cur_dst];
     }
 
-    landgrab.findOverlappingBubbles = function(guid) {
-        var portalInfo = landgrab.portalInfo[guid];
-        let overlap = function (innerguid) {
-            let innerPortalInfo = landgrab.portalInfo[innerguid];
-            let dist = landgrab.distPointPoint(innerPortalInfo.lat, innerPortalInfo.lng, overlap.target.lat, overlap.target.lng);
-            if (dist < innerPortalInfo.captureRadius + overlap.target.captureRadius) {
-                overlap.results.push(innerguid);
-            }
-            return false;
+    landgrab.getPortal = function(guid) {
+        var idx = landgrab.portalIndex[guid];
+        if (idx == undefined) {
+            //console.log("guid not found", guid);
+            return [null, null];
         }
-        overlap.target = portalInfo;
-        overlap.results = [];
-        landgrab.findNearest(portalInfo.lat, portalInfo.lng, overlap, portalInfo.captureRadius * 2);
-        return overlap.results;
+        var portalInfo = landgrab.portalInfo[idx];
+        if (portalInfo == undefined) {
+            //console.log("index not found", guid, idx);
+            return [null, null];
+        }
+        if (portalInfo.guid != guid) {
+            console.log("guid mismatch", guid, idx, portalInfo.guid);
+            return [null, null];
+        }
+        return [idx, portalInfo];
     }
 
-    landgrab.updatePortalScore = function(guid) {
-        var portalInfo = landgrab.portalInfo[guid];
-        if (!portalInfo) {
+    landgrab.addPortal = function(guid, lat, lng, captured) {
+        // It would be nice to use the guid as our portal identifiers everywhere
+        // but sadly d3.Delunay only works on integer indices.
+        let newlen = landgrab.portalInfo.push({
+            guid: guid,
+            lat: lat,
+            lng: lng,
+            captured: captured,
+        });
+        landgrab.portalIndex[guid] = newlen -1;
+    }
+
+    const key = 'plugin-landgrab-portalinfo';
+    landgrab.loadPortalInfo = function() {
+        if(localStorage[key] == undefined) {
             return;
         }
-        if (!portalInfo.captured) return 0;
-        var [nearest_uncaptured, dist] = landgrab.findNearestUncaptured(portalInfo.lat, portalInfo.lng);
-        portalInfo.captureRadius = dist;
-        let score = function (guid) {
-            score.count = score.count + 1;
-            return false;
-        }
-        score.count = 0;
-        landgrab.findNearest(portalInfo.lat, portalInfo.lng, score, dist);
-        portalInfo.score = score.count;
-    }
 
-    landgrab.updateVisiblePortalScores = function () {
-        // Update portal score for all portals in view
-        for (let guid in window.portals) {
-            landgrab.updatePortalScore(guid);
-        }
-        landgrab.score = 0;
-        for (let guid in landgrab.portalInfo) {
-            landgrab.score += landgrab.portalInfo[guid].score;
-        }
-        landgrab.storeLocal('portalInfo');
-        landgrab.drawBubbles();
-    }
-
-    landgrab.findNearestUncaptured = function(lat, lng) {
-        var uncaptured = function(guid) {
-            return !landgrab.portalInfo[guid].captured;
-        }
-        return landgrab.findNearest(lat, lng, uncaptured);
-    }
-
-    landgrab.storeLocal = function(name) {
-        var key = landgrab.FIELDS[name];
-        if(key === undefined) return;
-
-        var value = landgrab[name];
-
-        if(typeof value !== 'undefined' && value !== null) {
-            localStorage[key] = JSON.stringify(landgrab[name]);
-        } else {
-            localStorage.removeItem(key);
+        var portalInfo = JSON.parse(localStorage[key]);
+        if (!portalInfo instanceof Array) {return};
+        // We don't set landgrab.portalInfo to the value loaded from JSON directly
+        // because we need to construct landgrab.portalIndex as well.
+        // So instead we call addPortal on each item.
+        for (let p of portalInfo) {
+            landgrab.addPortal(p.guid, p.lat, p.lng, p.captured);
         }
     }
 
-    landgrab.loadLocal = function(name) {
-        var key = landgrab.FIELDS[name];
-        if(key === undefined) return;
-
-        if(localStorage[key] !== undefined) {
-            landgrab[name] = JSON.parse(localStorage[key]);
-        }
+    landgrab.storePortalInfo = function() {
+        //localStorage.removeItem('plugin-landgrab-portalinfo');
+        localStorage[key] = JSON.stringify(landgrab.portalInfo);
     }
 
     /***************************************************************************************************************************************************************/
@@ -350,9 +228,8 @@ function wrapper(plugin_info) {
     landgrab.highlighter = {
         highlight: function(data) {
             var guid = data.portal.options.ent[0];
-            var history = data.portal.options.data.history;
+            let [idx, portalInfo] = landgrab.getPortal(guid);
 
-            var portalInfo = landgrab.portalInfo[guid];
             var style = {};
 
             if (portalInfo) {
@@ -371,10 +248,6 @@ function wrapper(plugin_info) {
 
             data.portal.setStyle(style);
         },
-
-        setSelected: function(active) {
-            landgrab.isHighlightActive = active;
-        }
     }
 
 
@@ -402,22 +275,16 @@ function wrapper(plugin_info) {
     var setup = function() {
         landgrab.setupCSS();
         landgrab.setupContent();
-        landgrab.loadLocal('portalInfo');
-        for (let guid in landgrab.portalInfo) {
-            let portalInfo = landgrab.portalInfo[guid];
-            landgrab.addPortalToQuadTree(guid, portalInfo.lat, portalInfo.lng);
-        }
-        landgrab.bubbles = new L.LayerGroup();
-        landgrab.selectedBubble = L.geodesicCircle([0, 0], 0, {
-            ...landgrab.bubbleOptions,
-            color: '#ADD8E6'
-        });
+        landgrab.loadPortalInfo();
+        window.COLORS[0] = "#777777";
+
+        landgrab.voronoiLayer = new L.LayerGroup();
         window.addPortalHighlighter('landgrab', landgrab.highlighter);
         window.addHook('portalDetailsUpdated', landgrab.onPortalDetailsUpdated);
         window.addHook('portalSelected', landgrab.onPortalSelected);
         window.addHook('portalAdded', landgrab.onPortalAdded);
-        window.addHook('mapDataRefreshEnd', landgrab.updateVisiblePortalScores);
-        window.addLayerGroup('Landgrab: Grabbed land', landgrab.bubbles, true);
+        window.addHook('mapDataRefreshEnd', landgrab.mapDataRefreshEnd);
+        window.addLayerGroup('Landgrab: Grabbed land', landgrab.voronoiLayer, true);
     }
 
     setup.info = plugin_info; //add the script info data to the function as a property
@@ -432,4 +299,3 @@ var info = {};
 if (typeof GM_info !== 'undefined' && GM_info && GM_info.script) info.script = { version: GM_info.script.version, name: GM_info.script.name, description: GM_info.script.description };
 script.appendChild(document.createTextNode('('+ wrapper +')('+JSON.stringify(info)+');'));
 (document.body || document.head || document.documentElement).appendChild(script);
-
