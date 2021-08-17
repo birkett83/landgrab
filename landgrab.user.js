@@ -28,7 +28,7 @@ function wrapper(plugin_info) {
     landgrab.scores = [];
     landgrab.totalScore = 0;
     landgrab.voronoi = null;
-    landgrab.colorGradient = ['#000000', '#b20000', '#da0000', '#e72400', '#f14c01', '#fa7400', '#fc9200', '#feb901', '#ffde04', '#ffe432', '#ffea60']
+    landgrab.colorGradient = ['#000000', '#b20000', '#da0000', '#e72400', '#f14c01', '#fa7400', '#fc9200', '#feb901', '#ffde04', '#ffe432', '#ffea60'];
 
     landgrab.disabledMessage = null;
     landgrab.contentHTML = null;
