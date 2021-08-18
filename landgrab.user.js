@@ -218,8 +218,23 @@ function wrapper(plugin_info) {
     }
 
     landgrab.storePortalInfo = function() {
+        // Find indicies of all captured portals and their neighbours.
+        // We need the immediate neighbours of captured portals to correctly
+        // draw the Voronoi diagram. Filtering in this way reduced my
+        // portalInfo list from 20000 down to 7000 so it should help with
+        // performance.
+        let indicies = {};
+        for (let [i, portalInfo] of landgrab.portalInfo.entries()) {
+            if (portalInfo.captured) {
+                for (let j of landgrab.voronoi.neighbors(i)) {
+                    indicies[j] = true;
+                }
+            }
+        }
+        // This won't take effect until the next time IITC is loaded but that's fine.
+        let newPortalInfo = landgrab.portalInfo.filter((_, idx) => indicies[idx]);
         //localStorage.removeItem('plugin-landgrab-portalinfo');
-        localStorage[key] = JSON.stringify(landgrab.portalInfo);
+        localStorage[key] = JSON.stringify(newPortalInfo);
     }
 
     /***************************************************************************************************************************************************************/
