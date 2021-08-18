@@ -226,6 +226,7 @@ function wrapper(plugin_info) {
         let indicies = {};
         for (let [i, portalInfo] of landgrab.portalInfo.entries()) {
             if (portalInfo.captured) {
+                indicies[i] = true;
                 for (let j of landgrab.voronoi.neighbors(i)) {
                     indicies[j] = true;
                 }
