@@ -9,7 +9,7 @@
 // @match          https://intel.ingress.com/*
 // @grant          none
 
-// @require        https://cdn.jsdelivr.net/npm/d3@7.0.0/dist/d3.min.js
+// @require        https://cdn.jsdelivr.net/npm/d3-delaunay@6.0.2/dist/d3-delaunay.min.js
 
 // ==/UserScript==
 
