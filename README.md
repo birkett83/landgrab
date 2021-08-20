@@ -1,6 +1,8 @@
 # landgrab
 A mini-game based on ingress and IITC.
 
+![Landgrab](assets/landgrab.png)
+
 ## What is ingress?
 [Ingress](https://ingress.com/) is an augmented-reality game for Android and
 iOS.
