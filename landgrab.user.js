@@ -85,32 +85,6 @@ function wrapper(plugin_info) {
         }
     }
 
-    landgrab.onPortalAdded = function (data) {
-        let guid = data.portal.options.guid;
-        let portal = data.portal;
-        let history = portal.options.data.history;
-        // Bug in stock ingress means history often doesn't show. Something about caching.
-        // Reload the page and eventually it does. Or something.
-        // For now we just ignore portals that don't have history.
-        if (!history) { return }
-        let [idx, portalInfo] = landgrab.getPortal(guid);
-        if (idx == undefined) {
-            // We have not seen this portal before.
-            // This means we need to compute a new voronoi diagram (and scores)
-            // We'll do that in mapDataRefreshEnd
-            landgrab.voronoi = null;
-            //console.log(history);
-            landgrab.addPortal(guid, portal.options.data.latE6/1000000, portal.options.data.lngE6/1000000, history.captured);
-        } else {
-            if(history.captured && !portalInfo.captured) {
-                // This portal has been captured since we last saw it. We need to recompute scores.
-                // We'll do that in mapDataRefreshEnd
-                portalInfo.captured = true;
-                landgrab.scores = null;
-            }
-        }
-    }
-
     landgrab.mapDataRefreshEnd = function () {
         if (!landgrab.voronoi) {
             // Using the d3-geo-voronoi package which does proper spherical geometry
@@ -205,17 +179,53 @@ function wrapper(plugin_info) {
         return [idx, portalInfo];
     }
 
-    landgrab.addPortal = function(guid, lat, lng, captured) {
+    landgrab.onPortalAdded = function (data) {
+        let guid = data.portal.options.guid;
+        let portal = data.portal;
+        let history = portal.options.data.history;
+        // Bug in stock ingress means history often doesn't show. Something about caching.
+        // Reload the page and eventually it does. Or something.
+        // For now we just ignore portals that don't have history.
+        if (!history) { return }
+        landgrab.addPortal(
+            guid,
+            portal.options.data.latE6/1000000,
+            portal.options.data.lngE6/1000000,
+            history.captured,
+            history.visited,
+        )
+    }
+
+    landgrab.addPortal = function(guid, lat, lng, captured, visited) {
         // It would be nice to use the guid as our portal identifiers everywhere
         // but sadly d3.Delunay only works on integer indices.
-        let newlen = landgrab.portalInfo.push({
-            guid: guid,
-            lat: lat,
-            lng: lng,
-            captured: captured,
-        });
-        landgrab.portalIndex[guid] = newlen -1;
-    }
+        let [idx, portalInfo] = landgrab.getPortal(guid);
+        if (idx == undefined) {
+            // We have not seen this portal before.
+            // This means we need to compute a new voronoi diagram (and scores)
+            // We'll do that in mapDataRefreshEnd
+            landgrab.voronoi = null;
+            //console.log(history);
+            let newlen = landgrab.portalInfo.push({
+                guid: guid,
+                lat: lat,
+                lng: lng,
+                captured: captured,
+                visited: visited,
+            });
+            landgrab.portalIndex[guid] = newlen - 1;
+        } else {
+            if(captured && !portalInfo.captured) {
+                // This portal has been captured since we last saw it. We need to recompute scores.
+                // We'll do that in mapDataRefreshEnd
+                portalInfo.captured = true;
+                landgrab.captureScores = null;
+            }
+            if(visited && !portalInfo.visited) {
+                portalInfo.visited = true;
+                landgrab.visitScores = null;
+            }
+        }
 
     const key = 'plugin-landgrab-portalinfo';
     landgrab.loadPortalInfo = function() {
