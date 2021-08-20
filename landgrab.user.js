@@ -25,10 +25,13 @@ function wrapper(plugin_info) {
 
     landgrab.portalInfo = [];
     landgrab.portalIndex = {};
-    landgrab.scores = [];
-    landgrab.totalScore = 0;
+    landgrab.captureScores = [];
+    landgrab.visitScores = [];
+    landgrab.totalCaptureScore = 0;
+    landgrab.totalVisitScore = 0;
     landgrab.voronoi = null;
-    landgrab.colorGradient = ['#000000', '#b20000', '#da0000', '#e72400', '#f14c01', '#fa7400', '#fc9200', '#feb901', '#ffde04', '#ffe432', '#ffea60'];
+    landgrab.captureColorGradient = ['#000000', '#b20000', '#da0000', '#e72400', '#f14c00', '#fa7400', '#fc9200', '#feb900', '#ffde04', '#ffe432', '#ffea60'];
+    landgrab.visitColorGradient = ['#000000', '#b200b2', '#da00da', '#e700c3', '#f100a5', '#fa0086', '#fc006a', '#fe0045', '#ff0421', '#ff321b', '#ff6015'];
 
     landgrab.disabledMessage = null;
     landgrab.contentHTML = null;
@@ -67,16 +70,18 @@ function wrapper(plugin_info) {
                     landgrab.storePortalInfo();
                 }
             }
-            if (landgrab.scores == null) {
+            if (landgrab.captureScores == null) {
                 console.log("scores are null!");
                 return
             }
 
 
             $('#portaldetails > .imgpreview').after(
-                '<div id="landgrab-container">Portal Score: ' + landgrab.scores[idx] + '</br>' +
-                'Total Score: ' + landgrab.totalScore + '</div>');
-
+                '<table id="landgrab-container">' +
+                '<tr><th></th><th>Visited</th><th>Captured</th></tr>' +
+                '<tr><td>Portal Score</td><td>' + landgrab.visitScores[idx] + '</td><td>' + landgrab.captureScores[idx] + '</td></tr>' +
+                '<tr><td>Total Score</td><td>' + landgrab.totalVisitScore + '</td><td>' + landgrab.totalCaptureScore + '</td></tr>' +
+                '</table>');
         }
     }
 
@@ -123,69 +128,80 @@ function wrapper(plugin_info) {
                 p => p.lng
             ).voronoi([-180, -180, 180, 180]);
             // need to recompute scores.
-            landgrab.scores = null;
+            landgrab.captureScores = null;
+            landgrab.visitScores = null;
         }
-        if (!landgrab.scores) {
+        if (!landgrab.visitScores || !landgrab.captureScores) {
             landgrab.computeScores();
         }
         landgrab.storePortalInfo();
     }
 
-    landgrab.computeScores = function(depth, neighbors) {
-        var polygons = [...landgrab.voronoi.cellPolygons()];
-        var newneighbors = []
-        if (depth == undefined) {
-            landgrab.voronoiLayer.clearLayers();
-            landgrab.totalScore = 0;
-            landgrab.scores = [];
-            depth = 0;
-            neighbors = [];
-            for (let [i, portalInfo] of landgrab.portalInfo.entries()) {
-                // Find the uncaptured portals, i.e. score 0
-                if (!portalInfo.captured) {
-                    neighbors.push(i)
-                }
+    landgrab.computeScores = function() {
+        landgrab.captureLayer.clearLayers();
+        landgrab.totalCaptureScore = 0;
+        landgrab.captureScores = [];
+        landgrab.visitLayer.clearLayers();
+        landgrab.totalVisitScore = 0;
+        landgrab.visitScores = [];
+        var uncaptured = [];
+        var unvisited = [];
+        for (let [i, portalInfo] of landgrab.portalInfo.entries()) {
+            if (!portalInfo.captured) {
+                uncaptured.push(i)
+            }
+            if (!portalInfo.visited) {
+                unvisited.push(i)
             }
         }
+        landgrab.computeScoresInner(
+            0, uncaptured, 'captureLayer', 'captureColorGradient', 'captureScores', 'totalCaptureScore');
+        landgrab.computeScoresInner(
+            0, unvisited, 'visitLayer', 'visitColorGradient', 'visitScores', 'totalVisitScore');
+
+    }
+
+    landgrab.computeScoresInner = function(depth, neighbors, layer, gradient, scores, totalScore) {
+        var newneighbors = []
         for (let i of neighbors) {
             // Check if we've seen this portal before
-            if (landgrab.scores[i] != undefined) { continue };
-            landgrab.scores[i] = depth;
+            if (landgrab[scores][i] != undefined) { continue };
+            landgrab[scores][i] = depth;
             if (depth > 0) {
                 // draw on map
-                let color = landgrab.colorGradient[depth % landgrab.colorGradient.length];
+                let color = landgrab[gradient][depth % landgrab[gradient].length];
                 let style = {...landgrab.voronoiStyle, color: color};
-                landgrab.voronoiLayer.addLayer(
-                    new L.polygon(polygons[i], style)
+                landgrab[layer].addLayer(
+                    new L.polygon(landgrab.voronoi.cellPolygon(i), style)
                 );
             }
-            landgrab.totalScore += depth;
+            landgrab[totalScore] += depth;
             for (let n of landgrab.voronoi.neighbors(i)) {
-                if (landgrab.scores[n] == undefined) {
+                if (landgrab[scores][n] == undefined) {
                     newneighbors.push(n)
                 }
             }
         }
         if (newneighbors.length) {
-            landgrab.computeScores(depth+1, newneighbors);
+            landgrab.computeScoresInner(depth+1, newneighbors, layer, gradient, scores, totalScore);
         }
     }
 
     landgrab.getPortal = function(guid) {
         var idx = landgrab.portalIndex[guid];
-        if (idx == undefined) {
-            //console.log("guid not found", guid);
+        /*if (idx == undefined) {
+            console.log("guid not found", guid);
             return [null, null];
-        }
+        }*/
         var portalInfo = landgrab.portalInfo[idx];
-        if (portalInfo == undefined) {
-            //console.log("index not found", guid, idx);
+        /*if (portalInfo == undefined) {
+            console.log("index not found", guid, idx);
             return [null, null];
         }
         if (portalInfo.guid != guid) {
             console.log("guid mismatch", guid, idx, portalInfo.guid);
             return [null, null];
-        }
+        }*/
         return [idx, portalInfo];
     }
 
@@ -213,19 +229,23 @@ function wrapper(plugin_info) {
         // because we need to construct landgrab.portalIndex as well.
         // So instead we call addPortal on each item.
         for (let p of portalInfo) {
-            landgrab.addPortal(p.guid, p.lat, p.lng, p.captured);
+            // migration from older versions that didn't store visit info
+            if (p.visited == undefined) {
+                p.visited = p.captured;
+            }
+            landgrab.addPortal(p.guid, p.lat, p.lng, p.captured, p.visited);
         }
     }
 
     landgrab.storePortalInfo = function() {
-        // Find indicies of all captured portals and their neighbours.
+        // Find indicies of all visited portals and their neighbours.
         // We need the immediate neighbours of captured portals to correctly
         // draw the Voronoi diagram. Filtering in this way reduced my
         // portalInfo list from 20000 down to 7000 so it should help with
         // performance.
         let indicies = {};
         for (let [i, portalInfo] of landgrab.portalInfo.entries()) {
-            if (portalInfo.captured) {
+            if (portalInfo.visited) {
                 indicies[i] = true;
                 for (let j of landgrab.voronoi.neighbors(i)) {
                     indicies[j] = true;
@@ -272,13 +292,9 @@ function wrapper(plugin_info) {
             .prop("type", "text/css")
             .html('\
 #landgrab-container {\
-  display: block;\
   text-align: center;\
-  margin: 6px 3px 1px 3px;\
+  margin: 6px auto 1px auto;\
   padding: 0 4px;\
-}\
-#landgrab-container label {\
-  margin: 0 0.5em;\
 }\
 ')
             .appendTo("head");
@@ -294,13 +310,20 @@ function wrapper(plugin_info) {
         landgrab.loadPortalInfo();
         window.COLORS[0] = "#777777";
 
-        landgrab.voronoiLayer = new L.LayerGroup();
         window.addPortalHighlighter('landgrab', landgrab.highlighter);
         window.addHook('portalDetailsUpdated', landgrab.onPortalDetailsUpdated);
         window.addHook('portalSelected', landgrab.onPortalSelected);
         window.addHook('portalAdded', landgrab.onPortalAdded);
         window.addHook('mapDataRefreshEnd', landgrab.mapDataRefreshEnd);
-        window.addLayerGroup('Landgrab: Grabbed land', landgrab.voronoiLayer, true);
+        landgrab.captureLayer = new L.LayerGroup();
+        landgrab.visitLayer = new L.LayerGroup();
+        window.addLayerGroup('Landgrab: Grabbed land', landgrab.captureLayer, true);
+        window.addLayerGroup('Landgrab: Visited land', landgrab.visitLayer, true);
+        // This is janky as heck but it works.
+        // We need the timeout because if we remove the layer before the addLayer function has completed it breaks the layer chooser.
+        // There is a groupedLayerControl thing for leaflet that would do it better but I don't want to mess with the internals of IITC.
+        landgrab.captureLayer.on('add', _ => setTimeout(_ => window.map.removeLayer(landgrab.visitLayer), 10))
+        landgrab.visitLayer.on('add', _ => setTimeout(_ => window.map.removeLayer(landgrab.captureLayer), 10))
     }
 
     setup.info = plugin_info; //add the script info data to the function as a property
