@@ -334,8 +334,8 @@ function wrapper(plugin_info) {
         // This is janky as heck but it works.
         // We need the timeout because if we remove the layer before the addLayer function has completed it breaks the layer chooser.
         // There is a groupedLayerControl thing for leaflet that would do it better but I don't want to mess with the internals of IITC.
-        landgrab.captureLayer.on('add', _ => setTimeout(_ => window.map.removeLayer(landgrab.visitLayer), 10))
-        landgrab.visitLayer.on('add', _ => setTimeout(_ => window.map.removeLayer(landgrab.captureLayer), 10))
+        landgrab.captureLayer.on('add', _ => setTimeout(_ => window.map.removeLayer(landgrab.visitLayer), 10));
+        landgrab.visitLayer.on('add', _ => setTimeout(_ => window.map.removeLayer(landgrab.captureLayer), 10));
     }
 
     setup.info = plugin_info; //add the script info data to the function as a property
