@@ -227,6 +227,8 @@ function wrapper(plugin_info) {
             }
         }
 
+    }
+
     const key = 'plugin-landgrab-portalinfo';
     landgrab.loadPortalInfo = function() {
         if(localStorage[key] == undefined) {
