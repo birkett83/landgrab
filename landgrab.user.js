@@ -283,14 +283,17 @@ function wrapper(plugin_info) {
             if (portalInfo) {
                 if (portalInfo.captured) {
                     // captured - no highlights
+                } else if (portalInfo.visited) {
+                    style.fillColor = '#FF0000';
+                    style.fillOpacity = 1.0;
                 } else {
-                    // we have an 'portalInfo' entry for the portal, but it's not captured
-                    style.fillColor = 'white';
+                    // we have an 'portalInfo' entry for the portal, but it's not visited
+                    style.fillColor = '#CC00FF';
                     style.fillOpacity = 1.0;
                 }
             } else {
                 // no visit data at all
-                style.fillColor = 'white';
+                style.fillColor = '#CC00FF';
                 style.fillOpacity = 1.0;
             }
 
