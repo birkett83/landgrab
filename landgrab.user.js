@@ -111,11 +111,10 @@ function wrapper(plugin_info) {
         landgrab.storePortalInfo();
     }
 
+
     landgrab.computeScores = function() {
-        landgrab.captureLayer.clearLayers();
         landgrab.totalCaptureScore = 0;
         landgrab.captureScores = [];
-        landgrab.visitLayer.clearLayers();
         landgrab.totalVisitScore = 0;
         landgrab.visitScores = [];
         var uncaptured = [];
@@ -129,26 +128,18 @@ function wrapper(plugin_info) {
             }
         }
         landgrab.computeScoresInner(
-            0, uncaptured, 'captureLayer', 'captureColorGradient', 'captureScores', 'totalCaptureScore');
+            0, uncaptured, 'captureScores', 'totalCaptureScore');
         landgrab.computeScoresInner(
-            0, unvisited, 'visitLayer', 'visitColorGradient', 'visitScores', 'totalVisitScore');
-
+            0, unvisited, 'visitScores', 'totalVisitScore');
+        landgrab.drawPolygons();
     }
 
-    landgrab.computeScoresInner = function(depth, neighbors, layer, gradient, scores, totalScore) {
+    landgrab.computeScoresInner = function(depth, neighbors, scores, totalScore) {
         var newneighbors = []
         for (let i of neighbors) {
             // Check if we've seen this portal before
-            if (landgrab[scores][i] != undefined) { continue };
+            if (landgrab[scores][i] != undefined) { console.log("This shouldn't happen"); continue };
             landgrab[scores][i] = depth;
-            if (depth > 0) {
-                // draw on map
-                let color = landgrab[gradient][depth % landgrab[gradient].length];
-                let style = {...landgrab.voronoiStyle, color: color};
-                landgrab[layer].addLayer(
-                    new L.polygon(landgrab.voronoi.cellPolygon(i), style)
-                );
-            }
             landgrab[totalScore] += depth;
             for (let n of landgrab.voronoi.neighbors(i)) {
                 if (landgrab[scores][n] == undefined) {
@@ -157,7 +148,30 @@ function wrapper(plugin_info) {
             }
         }
         if (newneighbors.length) {
-            landgrab.computeScoresInner(depth+1, newneighbors, layer, gradient, scores, totalScore);
+            landgrab.computeScoresInner(depth+1, newneighbors, scores, totalScore);
+        }
+    }
+
+    landgrab.drawPolygons = function() {
+        landgrab.visitLayer.clearLayers();
+        landgrab.captureLayer.clearLayers();
+        for (let [i, portalInfo] of landgrab.portalInfo.entries()) {
+            let captureScore = landgrab.captureScores[i];
+            let visitScore = landgrab.visitScores[i];
+            if (captureScore > 0) {
+                let color = landgrab.captureColorGradient[captureScore % landgrab.captureColorGradient.length];
+                let style = {...landgrab.voronoiStyle, color: color};
+                landgrab.captureLayer.addLayer(
+                    new L.polygon(landgrab.voronoi.cellPolygon(i), style)
+                );
+            }
+            if (visitScore > 0) {
+                let color = landgrab.visitColorGradient[visitScore % landgrab.visitColorGradient.length];
+                let style = {...landgrab.voronoiStyle, color: color};
+                landgrab.visitLayer.addLayer(
+                    new L.polygon(landgrab.voronoi.cellPolygon(i), style)
+                );
+            }
         }
     }
 
