@@ -440,6 +440,8 @@ function wrapper(plugin_info) {
         // There is a groupedLayerControl thing for leaflet that would do it better but I don't want to mess with the internals of IITC.
         landgrab.captureLayer.on('add', _ => setTimeout(_ => window.map.removeLayer(landgrab.visitLayer), 10));
         landgrab.visitLayer.on('add', _ => setTimeout(_ => window.map.removeLayer(landgrab.captureLayer), 10));
+        // draw the layers asap (waiting for portal data is annoying)
+        landgrab.mapDataRefreshEnd();
     }
 
     setup.info = plugin_info; //add the script info data to the function as a property
