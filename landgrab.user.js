@@ -84,6 +84,7 @@ function wrapper(plugin_info) {
     landgrab.portalIndex = {};
 
     landgrab.voronoi = null;
+    landgrab.voronoiStale = true;
     landgrab.voronoiStyle = {
         stroke: true,
         color: '#FF00FF',
@@ -98,20 +99,23 @@ function wrapper(plugin_info) {
     landgrab.captureColorGradient = ['#000000', '#b20000', '#da0000', '#e72400', '#f14c00', '#fa7400', '#fc9200', '#feb900', '#ffde04', '#ffe432', '#ffea60'];
     landgrab.visitColorGradient = ['#000000', '#b200b2', '#da00da', '#e700c3', '#f100a5', '#fa0086', '#fc006a', '#fe0045', '#ff0421', '#ff321b', '#ff6015'];
 
-    landgrab.captureScores = null;
-    landgrab.totalCaptureScore = 0;
-    landgrab.captureDSF = new DSF();
+    landgrab.newScoreObj = function() {
+        return {
+            score: [],
+            totalScore: 0,
+            dsf: new DSF(),
+            stale: false,
+        }
+    }
 
-    landgrab.visitScores = null;
-    landgrab.totalVisitScore = 0;
-    landgrab.visitDSF = new DSF();
+    landgrab.capture = landgrab.newScoreObj();
+    landgrab.visit = landgrab.newScoreObj();
 
     landgrab.disabledMessage = null;
     landgrab.contentHTML = null;
 
-
     landgrab.onPortalSelected = function() {
-        // TODO
+        landgrab.drawPolygons();
     }
 
     landgrab.onPortalDetailsUpdated = function() {
@@ -128,28 +132,31 @@ function wrapper(plugin_info) {
             if(details.history) {
                 if(details.history.captured && !portalInfo.captured) {
                     portalInfo.captured = true;
-                    landgrab.computeScores();
+                    landgrab.capture.stale = true;
                     landgrab.storePortalInfo();
                 }
+                if(details.history.visited && !portalInfo.visited) {
+                    portalInfo.visited = true;
+                    landgrab.visit.stale = true;
+                    landgrab.storePortalInfo();
+                }
+                if (landgrab.visit.stale || landgrab.capture.stale) {
+                    landgrab.computeScores();
+                }
             }
-            if (landgrab.captureScores == null) {
-                console.log("scores are null!");
-                return
-            }
-
 
             $('#portaldetails > .imgpreview').after(
                 '<table id="landgrab-container">' +
                 '<tr><th></th><th>Visited</th><th>Captured</th></tr>' +
-                '<tr><td>Portal Score</td><td>' + landgrab.visitScores[idx] + '</td><td>' + landgrab.captureScores[idx] + '</td></tr>' +
-                '<tr><td>Local Score</td><td>' + landgrab.visitDSF.score(idx) + '</td><td>' + landgrab.captureDSF.score(idx) + '</td></tr>' +
-                '<tr><td>Total Score</td><td>' + landgrab.totalVisitScore + '</td><td>' + landgrab.totalCaptureScore + '</td></tr>' +
+                '<tr><td>Portal Score</td><td>' + landgrab.visit.score[idx] + '</td><td>' + landgrab.capture.score[idx] + '</td></tr>' +
+                '<tr><td>Local Score</td><td>' + landgrab.visit.dsf.score(idx) + '</td><td>' + landgrab.capture.dsf.score(idx) + '</td></tr>' +
+                '<tr><td>Total Score</td><td>' + landgrab.visit.TotalScore + '</td><td>' + landgrab.capture.totalScore + '</td></tr>' +
                 '</table>');
         }
     }
 
     landgrab.mapDataRefreshEnd = function () {
-        if (!landgrab.voronoi) {
+        if (landgrab.voronoiStale) {
             // Using the d3-geo-voronoi package which does proper spherical geometry
             // produced extremely bad results when portals are close together, probably
             // because of rounding errors in the trigonometric functions blowing up.
@@ -164,11 +171,12 @@ function wrapper(plugin_info) {
                 p => p.lat,
                 p => p.lng
             ).voronoi([-180, -180, 180, 180]);
+            landgrab.voronoiStale = false;
             // need to recompute scores.
-            landgrab.captureScores = null;
-            landgrab.visitScores = null;
+            landgrab.capture.stale = true;
+            landgrab.visit.stale = true;
         }
-        if (!landgrab.visitScores || !landgrab.captureScores) {
+        if (landgrab.visit.stale || landgrab.capture.stale) {
             landgrab.computeScores();
         }
         landgrab.storePortalInfo();
@@ -177,14 +185,10 @@ function wrapper(plugin_info) {
 
     landgrab.computeScores = function() {
         var uncaptured = [];
-        landgrab.captureScores = [];
-        landgrab.totalCaptureScore = 0;
-        landgrab.captureDSF = new DSF();
+        let capture = landgrab.newScoreObj();
 
         var unvisited = [];
-        landgrab.visitScores = [];
-        landgrab.totalVisitScore = 0;
-        landgrab.visitDSF = new DSF();
+        let visit = landgrab.newScoreObj();
 
         for (let [i, portalInfo] of landgrab.portalInfo.entries()) {
             if (!portalInfo.captured) {
@@ -195,54 +199,63 @@ function wrapper(plugin_info) {
             }
         }
         landgrab.computeScoresInner(
-            0, uncaptured, 'captureScores', 'totalCaptureScore', 'captureDSF');
+            0, uncaptured, capture);
         landgrab.computeScoresInner(
-            0, unvisited, 'visitScores', 'totalVisitScore', 'visitDSF');
+            0, unvisited, visit);
+        landgrab.capture = capture;
+        landgrab.visit = visit;
         landgrab.drawPolygons();
     }
 
-    landgrab.computeScoresInner = function(depth, neighbors, scores, totalScore, dsf) {
+    landgrab.computeScoresInner = function(depth, neighbors, scores) {
         var newneighbors = []
         for (let i of neighbors) {
             // Check if we've seen this portal before
-            if (landgrab[scores][i] != undefined) { continue };
-            landgrab[scores][i] = depth;
-            landgrab[dsf].addScore(i, depth);
-            landgrab[totalScore] += depth;
+            if (scores.score[i] != undefined) { continue };
+            scores.score[i] = depth;
+            scores.dsf.addScore(i, depth);
+            scores.totalScore += depth;
 
             for (let n of landgrab.voronoi.neighbors(i)) {
-                if (landgrab[scores][n] == undefined) {
+                if (scores.score[n] == undefined) {
                     newneighbors.push(n);
                 }
                 // Neighbouring portals that are both {visit, captur}ed means they're
                 // part of the same blob
-                if (landgrab[scores][i] && landgrab[scores][n]) {
-                    landgrab[dsf].union(i, n);
+                if (scores.score[i] && scores.score[n]) {
+                    scores.dsf.union(i, n);
                 }
             }
         }
         if (newneighbors.length) {
-            landgrab.computeScoresInner(depth+1, newneighbors, scores, totalScore, dsf);
+            landgrab.computeScoresInner(depth+1, newneighbors, scores);
         }
     }
 
     landgrab.drawPolygons = function() {
-        landgrab.visitLayer.clearLayers();
-        landgrab.captureLayer.clearLayers();
+        landgrab.drawLayer(landgrab.captureLayer, landgrab.capture, landgrab.captureColorGradient);
+        landgrab.drawLayer(landgrab.visitLayer, landgrab.visit, landgrab.visitColorGradient);
+    }
+
+    landgrab.drawLayer = function(layer, scores, colors) {
+        layer.clearLayers();
+        var selectedRep;
+        if (window.selectedPortal) {
+            let idx = landgrab.portalIndex[window.selectedPortal];
+            selectedRep = scores.dsf.find(idx);
+        }
         for (let [i, portalInfo] of landgrab.portalInfo.entries()) {
-            let captureScore = landgrab.captureScores[i];
-            let visitScore = landgrab.visitScores[i];
-            if (captureScore > 0) {
-                let color = landgrab.captureColorGradient[captureScore % landgrab.captureColorGradient.length];
+            let score = scores.score[i];
+            if (score > 0) {
+                let color = colors[score % colors.length];
                 let style = {...landgrab.voronoiStyle, color: color};
-                landgrab.captureLayer.addLayer(
-                    new L.polygon(landgrab.voronoi.cellPolygon(i), style)
-                );
-            }
-            if (visitScore > 0) {
-                let color = landgrab.visitColorGradient[visitScore % landgrab.visitColorGradient.length];
-                let style = {...landgrab.voronoiStyle, color: color};
-                landgrab.visitLayer.addLayer(
+                if (selectedRep) {
+                    let rep = scores.dsf.find(i);
+                    if (selectedRep != rep) {
+                        style = {...style, opacity: 0.25, fillOpacity: 0.1}
+                    }
+                }
+                layer.addLayer(
                     new L.polygon(landgrab.voronoi.cellPolygon(i), style)
                 );
             }
@@ -292,7 +305,7 @@ function wrapper(plugin_info) {
             // We have not seen this portal before.
             // This means we need to compute a new voronoi diagram (and scores)
             // We'll do that in mapDataRefreshEnd
-            landgrab.voronoi = null;
+            landgrab.voronoiStale = true;
             //console.log(history);
             let newlen = landgrab.portalInfo.push({
                 guid: guid,
