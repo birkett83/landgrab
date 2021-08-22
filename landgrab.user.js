@@ -150,7 +150,7 @@ function wrapper(plugin_info) {
                 '<tr><th></th><th>Visited</th><th>Captured</th></tr>' +
                 '<tr><td class="landgrab-label">Portal Score</td><td>' + landgrab.visit.score[idx] + '</td><td>' + landgrab.capture.score[idx] + '</td></tr>' +
                 '<tr><td class="landgrab-label">Local Score</td><td>' + landgrab.visit.dsf.score(idx) + '</td><td>' + landgrab.capture.dsf.score(idx) + '</td></tr>' +
-                '<tr><td class="landgrab-label">Total Score</td><td>' + landgrab.visit.TotalScore + '</td><td>' + landgrab.capture.totalScore + '</td></tr>' +
+                '<tr><td class="landgrab-label">Total Score</td><td>' + landgrab.visit.totalScore + '</td><td>' + landgrab.capture.totalScore + '</td></tr>' +
                 '</table>');
         }
     }
