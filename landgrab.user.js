@@ -148,9 +148,9 @@ function wrapper(plugin_info) {
             $('#portaldetails > .imgpreview').after(
                 '<table id="landgrab-container">' +
                 '<tr><th></th><th>Visited</th><th>Captured</th></tr>' +
-                '<tr><td>Portal Score</td><td>' + landgrab.visit.score[idx] + '</td><td>' + landgrab.capture.score[idx] + '</td></tr>' +
-                '<tr><td>Local Score</td><td>' + landgrab.visit.dsf.score(idx) + '</td><td>' + landgrab.capture.dsf.score(idx) + '</td></tr>' +
-                '<tr><td>Total Score</td><td>' + landgrab.visit.TotalScore + '</td><td>' + landgrab.capture.totalScore + '</td></tr>' +
+                '<tr><td class="landgrab-label">Portal Score</td><td>' + landgrab.visit.score[idx] + '</td><td>' + landgrab.capture.score[idx] + '</td></tr>' +
+                '<tr><td class="landgrab-label">Local Score</td><td>' + landgrab.visit.dsf.score(idx) + '</td><td>' + landgrab.capture.dsf.score(idx) + '</td></tr>' +
+                '<tr><td class="landgrab-label">Total Score</td><td>' + landgrab.visit.TotalScore + '</td><td>' + landgrab.capture.totalScore + '</td></tr>' +
                 '</table>');
         }
     }
@@ -411,6 +411,9 @@ function wrapper(plugin_info) {
   text-align: center;\
   margin: 6px auto 1px auto;\
   padding: 0 4px;\
+}\
+.landgrab-label {\
+  text-align: right;\
 }\
 ')
             .appendTo("head");
