@@ -320,11 +320,11 @@ function wrapper(plugin_info) {
                 // This portal has been captured since we last saw it. We need to recompute scores.
                 // We'll do that in mapDataRefreshEnd
                 portalInfo.captured = true;
-                landgrab.captureScores = null;
+                landgrab.capture.stale = true;
             }
             if(visited && !portalInfo.visited) {
                 portalInfo.visited = true;
-                landgrab.visitScores = null;
+                landgrab.visit.stale = true;
             }
         }
 
