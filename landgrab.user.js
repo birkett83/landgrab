@@ -170,7 +170,7 @@ function wrapper(plugin_info) {
                 Object.values(landgrab.portalInfo),
                 p => p.lat,
                 p => p.lng
-            ).voronoi([-180, -180, 180, 180]);
+            ).voronoi([-180000000, -180000000, 180000000, 180000000]);
             landgrab.voronoiStale = false;
             // need to recompute scores.
             landgrab.capture.stale = true;
@@ -256,7 +256,10 @@ function wrapper(plugin_info) {
                     }
                 }
                 layer.addLayer(
-                    new L.polygon(landgrab.voronoi.cellPolygon(i), style)
+                    new L.polygon(
+                        landgrab.voronoi.cellPolygon(i)
+                            .map(p => [p[0]/1000000, p[1]/1000000]),
+                        style)
                 );
             }
         }
@@ -290,8 +293,8 @@ function wrapper(plugin_info) {
         if (!history) { return }
         landgrab.addPortal(
             guid,
-            portal.options.data.latE6/1000000,
-            portal.options.data.lngE6/1000000,
+            portal.options.data.latE6,
+            portal.options.data.lngE6,
             history.captured,
             history.visited,
         )
@@ -326,28 +329,43 @@ function wrapper(plugin_info) {
                 portalInfo.visited = true;
                 landgrab.visit.stale = true;
             }
+            // Portal may have moved
+            portalInfo.lat = lat;
+            portalInfo.lng = lng;
         }
 
     }
 
     const key = 'plugin-landgrab-portalinfo';
+    const formatKey = 'plugin-landgrab-dataformat';
     landgrab.loadPortalInfo = function() {
         if(localStorage[key] == undefined) {
             return;
         }
+        let dataFormat = localStorage[formatKey] || 0;
 
-        var portalInfo = JSON.parse(localStorage[key]);
-        if (!portalInfo instanceof Array) {return};
-        // We don't set landgrab.portalInfo to the value loaded from JSON directly
-        // because we need to construct landgrab.portalIndex as well.
-        // So instead we call addPortal on each item.
-        for (let p of portalInfo) {
-            // migration from older versions that didn't store visit info
-            if (p.visited == undefined) {
-                p.visited = p.captured;
+        let loadVersion = [];
+        loadVersion[0] = function () {
+            var portalInfo = JSON.parse(localStorage[key]);
+            if (!portalInfo instanceof Array) {return};
+            // We don't set landgrab.portalInfo to the value loaded from JSON directly
+            // because we need to construct landgrab.portalIndex as well.
+            // So instead we call addPortal on each item.
+            for (let p of portalInfo) {
+                // migration from older versions that didn't store visit info
+                if (p.visited == undefined) {
+                    p.visited = p.captured;
+                }
+                landgrab.addPortal(p.guid, p.lat * 1000000, p.lng * 1000000, p.captured, p.visited);
             }
-            landgrab.addPortal(p.guid, p.lat, p.lng, p.captured, p.visited);
         }
+        loadVersion[1] = function () {
+            var portalInfo = JSON.parse(localStorage[key]);
+            for (let p of portalInfo) {
+                landgrab.addPortal(p.guid, p.lat, p.lng, p.captured, p.visited);
+            }
+        }
+        loadVersion[dataFormat]();
     }
 
     landgrab.storePortalInfo = function() {
@@ -369,6 +387,7 @@ function wrapper(plugin_info) {
         let newPortalInfo = landgrab.portalInfo.filter((_, idx) => indicies[idx]);
         //localStorage.removeItem('plugin-landgrab-portalinfo');
         localStorage[key] = JSON.stringify(newPortalInfo);
+        localStorage[formatKey] = 1;
     }
 
     /***************************************************************************************************************************************************************/
