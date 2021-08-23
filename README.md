@@ -38,16 +38,12 @@ landgrab.user.js to install the plugin.
 
 ## This is flakey as heck, what's the deal?
 - I don't know javascript. I r clueless noob.
+- It will only update the Voronoi diagram and teh scores when portal data has
+  completely finished loading.
 - The does not seem to be a way to get a full list of portals you've
   visited/captured, so you need to scroll around the map for it to load portal
   data and find them. Landgrab will store history in your browser once it has
   seen it, so you should only need to do this once for each area...
-- It will only update the Voronoi diagram and teh scores when portal data has
-  completely finished loading.
-- If two portals are very very close together, the computation goes wrong and
-  you get a region extending away for hundreds of miles. Um. There's two
-  portals on top of each other near Chermside shopping centre in north Brisbane
-  and it's very frustrating. I don't know what to do about this. Sorry.
 - If landgrab has seen a portal you have captured/visited but doesn't know
   where that portal's nearest neighbour is (typically in remote areas), you may
   see regions extending away to infinity... try scrolling around to find a
