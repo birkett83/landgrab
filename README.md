@@ -45,9 +45,9 @@ landgrab.user.js to install the plugin.
   data and find them. Landgrab will store history in your browser once it has
   seen it, so you should only need to do this once for each area...
 - If landgrab has seen a portal you have captured/visited but doesn't know
-  where that portal's nearest neighbour is (typically in remote areas), you may
-  see regions extending away to infinity... try scrolling around to find a
-  nearby portal...
+  where that portal's nearest neighbour is (typically at the edge of an area
+  that was loaded, or in remote areas), you may see regions extending away to 
+  infinity... try scrolling around to find a nearby portal...
 
 # Credits
 IITC was originally written by Stefan Breunig and IITC "Community Edition"
