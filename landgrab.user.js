@@ -156,6 +156,8 @@ function wrapper(plugin_info) {
     }
 
     landgrab.mapDataRefreshEnd = function () {
+        landgrab.removeMissingPortals();
+
         if (landgrab.voronoiStale) {
             // Using the d3-geo-voronoi package which does proper spherical geometry
             // produced extremely bad results when portals are close together, probably
@@ -182,6 +184,33 @@ function wrapper(plugin_info) {
         landgrab.storePortalInfo();
     }
 
+    landgrab.removeMissingPortals = function () {
+        // When a portal has been removed from the game, it may still exist in portalInfo
+        // This is particularly annoying if the player has not captured the portal before
+        // it was removed, in which case they're stuck with a ghost portal they can never
+        // capture.
+        if (!(window.getDataZoomTileParameters().hasPortals)) {
+            return;
+        }
+        let bounds = window.map.getBounds();
+        let missingPortals = new Set(landgrab.portalInfo
+            .filter(p => bounds.contains([p.lat/1000000, p.lng/1000000]))
+            .filter(p => !(p.guid in window.portals))
+            .map(p => p.guid))
+        if (missingPortals.size > 0) {
+            console.log("Removed", missingPortals);
+            landgrab.voronoiStale = true;
+            // Rebuild portalInfo and portalIndex without the portals that have been removed
+            let portalInfo = landgrab.portalInfo
+                .filter(p => !(missingPortals.has(p.guid)))
+
+            landgrab.portalInfo = [];
+            landgrab.portalIndex = {}
+            for (let p of portalInfo) {
+                landgrab.addPortal(p.guid, p.lat, p.lng, p.captured, p.visited);
+            }
+        }
+    }
 
     landgrab.computeScores = function() {
         var uncaptured = [];
